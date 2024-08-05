@@ -4,6 +4,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.location.Location
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
@@ -30,8 +31,6 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
 
     private var fusedLocationClient: FusedLocationProviderClient? = null
 
-    private var currentPoint: LatLng? = null
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -54,14 +53,6 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         }
     }
 
-    private fun requestLocationPermission() {
-        if (!hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)) {
-            requestPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
-        } else {
-            getLocationByGoogleServices()
-        }
-    }
-
     override fun onMapReady(googleMap: GoogleMap) {
         mMap = googleMap
 
@@ -69,27 +60,13 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         mMap.uiSettings.isZoomControlsEnabled = true
 
         requestLocationPermission()
+    }
 
-        mMap.setOnMapClickListener { latLng ->
-            mMap.addMarker(
-                MarkerOptions().position(latLng)
-                    .title("Selected location")
-            )
-            if (currentPoint != null) {
-                mMap.addPolyline(
-                    PolylineOptions()
-                        .add(currentPoint, latLng)
-                        .width(5f)
-                        .color(Color.RED)
-                )
-                val builder = LatLngBounds.Builder()
-                builder.include(currentPoint!!)
-                builder.include(latLng)
-                val bounds = builder.build()
-                val padding = 300
-                val cameraUpdate = CameraUpdateFactory.newLatLngBounds(bounds, padding)
-                mMap.animateCamera(cameraUpdate)
-            }
+    private fun requestLocationPermission() {
+        if (!hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)) {
+            requestPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+        } else {
+            getLocationByGoogleServices()
         }
     }
 
@@ -100,21 +77,61 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         if (hasPermission(Manifest.permission.ACCESS_FINE_LOCATION) &&
             hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION)
         ) {
-
             fusedLocationClient?.lastLocation?.addOnCompleteListener { task ->
                 task.result?.let {
                     mMap.isMyLocationEnabled = true
                     Log.d("TAG", "onLocationResult: $it")
-                    currentPoint = LatLng(it.latitude, it.longitude)
-                    mMap.addMarker(
-                        MarkerOptions().position(currentPoint!!)
-                            .title("Current location")
-                    )
-                    mMap.moveCamera(
-                        CameraUpdateFactory.newLatLngZoom(currentPoint!!, 15f)
-                    )
+                    val currentLocation = LatLng(it.latitude, it.longitude)
+                    val targetLocation = LatLng(10.762622, 106.660172)
+                    addMarker(currentLocation, targetLocation)
+                    calculateDistance(currentLocation, targetLocation)
                 }
             }
+        }
+    }
+
+    private fun addMarker(currentLocation: LatLng, targetLocation: LatLng) {
+        mMap.addMarker(
+            MarkerOptions().position(currentLocation)
+                .title("Current location")
+        )
+        mMap.moveCamera(
+            CameraUpdateFactory.newLatLngZoom(currentLocation, 15f)
+        )
+        mMap.addMarker(
+            MarkerOptions().position(targetLocation)
+                .title("Selected location")
+        )
+        mMap.addPolyline(
+            PolylineOptions()
+                .clickable(true)
+                .add(currentLocation, targetLocation)
+                .width(10f)
+                .color(Color.RED)
+        )
+        val builder = LatLngBounds.Builder()
+        builder.include(currentLocation)
+        builder.include(targetLocation)
+        val bounds = builder.build()
+        val padding = 300
+        val cameraUpdate = CameraUpdateFactory.newLatLngBounds(bounds, padding)
+        mMap.animateCamera(cameraUpdate)
+    }
+
+    private fun calculateDistance(currentLocation: LatLng, targetLocation: LatLng) {
+        val results = FloatArray(1)
+        Location.distanceBetween(
+            currentLocation.latitude,
+            currentLocation.longitude,
+            targetLocation.latitude,
+            targetLocation.longitude,
+            results
+        )
+        val distanceInMeters = results[0]
+        mMap.setOnPolylineClickListener {
+            val distanceInKm = distanceInMeters / 1000
+            val distanceText = "Khoảng cách: %.2f km".format(distanceInKm)
+            Toast.makeText(this, distanceText, Toast.LENGTH_SHORT).show()
         }
     }
 
